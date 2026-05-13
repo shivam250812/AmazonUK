@@ -1,0 +1,21 @@
+# Environments & Secrets
+.env
+.venv/
+__pycache__/
+
+# Browser Profiles & Data
+chrome-data/
+screenshots/
+
+# Output Data
+output.csv
+input.csv
+gated_output.csv
+final_report.csv
+*.csv
+!sample_input.csv
+
+# OS
+.DS_Store
+profile30/
+test_chrome.py
