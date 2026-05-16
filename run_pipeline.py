@@ -148,7 +148,7 @@ def step_scrape_amazon(keywords: list[str], test_mode: bool, min_price: str = No
         cmd,
         cwd=str(_DIR),
         env=env,
-        timeout=3600,  # 1 hour max
+        timeout=None,  # No timeout for long scraping jobs
     )
 
     if result.returncode != 0:
