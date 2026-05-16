@@ -80,14 +80,21 @@ async def extract_helium10_revenue(page):
 
     Strategy:
       1. Wait up to 25s for the Helium 'Product Summary' panel to appear.
-      2. Once the panel is visible, poll up to 15s more for the $ value to populate.
-      3. As a last resort, do a tight body-text scan anchored to the exact
-         '30-Day Revenue' label.
+      2. Once the panel is visible, poll for the $ value.
+      3. If we see N/A or '-', keep polling for 10 more seconds in case
+         Helium is still loading.
+      4. Only accept N/A as final after the extra wait.
 
-    Returns float or None.
+    Returns: float (real revenue), "NA" (confirmed no data), or None (panel never loaded).
     """
-    REVENUE_RE = re.compile(
-        r"30[‑-]Day Revenue[\s\S]{0,50}?([$₹€£]\s*[\d,]+(?:\.\d+)?|N/?A|[-‑])",
+    # Regex to find dollar value right after "30-Day Revenue"
+    DOLLAR_RE = re.compile(
+        r"30[\u2011-]Day Revenue[\s\S]{0,50}?([$\u20b9\u20ac\u00a3]\s*[\d,]+(?:\.\d+)?)",
+        re.IGNORECASE,
+    )
+    # Regex to detect N/A or dash placeholder
+    NA_RE = re.compile(
+        r"30[\u2011-]Day Revenue[\s\S]{0,30}?(N/?A|[-\u2011])\s",
         re.IGNORECASE,
     )
 
@@ -102,9 +109,11 @@ async def extract_helium10_revenue(page):
             await panel_locator.wait_for(state="visible", timeout=25_000)
         except Exception:
             print("        Helium panel not detected — skipping revenue for this product.")
-            return None
+            return "NA"
 
-        for attempt in range(30):  # 30 × 500 ms = 15 s max
+        saw_na_at = None  # Track which attempt we first saw N/A
+
+        for attempt in range(50):  # 50 × 500 ms = 25 s max polling
             try:
                 container = panel_locator.locator(
                     "xpath=ancestor-or-self::*[contains(@class,'summary') "
@@ -119,25 +128,31 @@ async def extract_helium10_revenue(page):
             except Exception:
                 txt = ""
 
-            m = REVENUE_RE.search(txt)
+            # First, always check for a real dollar value
+            m = DOLLAR_RE.search(txt)
             if m:
-                match_str = m.group(1).upper().strip()
-                if match_str in ("N/A", "NA", "-", "‑"):
-                    return 0.0
-                val = clean_money(match_str)
+                val = clean_money(m.group(1))
                 if val is not None:
                     return val
 
+            # Check if we see N/A or dash
+            if NA_RE.search(txt):
+                if saw_na_at is None:
+                    saw_na_at = attempt
+                    print("        Helium showing N/A — waiting 10s to see if it updates...")
+                # If we've been seeing N/A for 20 attempts (10 seconds), accept it
+                if attempt - saw_na_at >= 20:
+                    print("        Helium confirmed N/A after waiting.")
+                    return "NA"
+
             await page.wait_for_timeout(500)
 
+        # Fallback: body text scan
         try:
             body = await page.locator("body").inner_text()
-            m = REVENUE_RE.search(body)
+            m = DOLLAR_RE.search(body)
             if m:
-                match_str = m.group(1).upper().strip()
-                if match_str in ("N/A", "NA", "-", "‑"):
-                    return 0.0
-                val = clean_money(match_str)
+                val = clean_money(m.group(1))
                 if val is not None:
                     return val
         except Exception:
@@ -148,7 +163,7 @@ async def extract_helium10_revenue(page):
     except Exception as e:
         print(f"        extract_helium10_revenue error: {e}")
 
-    return None
+    return "NA"
 
 
 # ─── Rating, Reviews, Sellers, Shipper/Seller ──────────────────────────────────
