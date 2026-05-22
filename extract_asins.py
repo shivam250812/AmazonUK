@@ -49,7 +49,7 @@ def extract_asins(input_path: str = "output.csv", output_path: str = "input.csv"
         for asin in asins_ordered:
             writer.writerow([asin])
 
-    print(f" Extracted {len(asins_ordered)} unique ASINs → {output_path}")
+    print(f" Extracted {len(asins_ordered)} unique ASINs -> {output_path}")
     return asins_ordered
 
 

@@ -259,13 +259,13 @@ async def create_browser(p, *, require_helium: bool = True, is_setup_mode: bool 
     if "chrome-data" in str(profile_path.resolve()).replace("\\", "/").lower():
         print(
             "  Helium 10 session lives only in ./chrome-data .\n"
-            "   • Log in to Helium inside THIS automation window.\n"
+            "   * Log in to Helium inside THIS automation window.\n"
         )
 
     if os.getenv("SKIP_PROFILE_REPAIR", "0") != "1":
         repair_chrome_crash_recovery(profile_path, PROFILE_DIR)
     else:
-        print("  SKIP_PROFILE_REPAIR=1 — skipped crash/session file cleanup.\n")
+        print("  SKIP_PROFILE_REPAIR=1 - skipped crash/session file cleanup.\n")
 
     args_extra = []
 
@@ -298,7 +298,7 @@ async def create_browser(p, *, require_helium: bool = True, is_setup_mode: bool 
         "--no-default-browser-check",
     ] + args_extra
 
-    print(" Starting Chrome (max ~2 min)…\n")
+    print(" Starting Chrome (max ~2 min)...\n")
     context = await p.chromium.launch_persistent_context(
         user_data_dir=str(profile_path),
         executable_path=CHROME_EXECUTABLE,

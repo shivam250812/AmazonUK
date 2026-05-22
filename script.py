@@ -114,7 +114,7 @@ async def extract_helium10_revenue(page):
         try:
             await panel_locator.wait_for(state="visible", timeout=15_000)
         except Exception:
-            print("        Helium panel not detected — skipping revenue for this product.")
+            print("        Helium panel not detected - skipping revenue for this product.")
             return "NA"
 
         saw_na_at = None  # Track which attempt we first saw N/A
@@ -145,7 +145,7 @@ async def extract_helium10_revenue(page):
             if NA_RE.search(txt):
                 if saw_na_at is None:
                     saw_na_at = attempt
-                    print("        Helium showing N/A — waiting 10s to see if it updates...")
+                    print("        Helium showing N/A - waiting 10s to see if it updates...")
                 # If we've been seeing N/A for 20 attempts (10 seconds), accept it
                 if attempt - saw_na_at >= 20:
                     print("        Helium confirmed N/A after waiting.")
@@ -473,7 +473,7 @@ async def process_keyword(context, keyword, writer, out_fp, min_price=None, max_
                 joiner = "&" if "?" in search_url else "?"
                 search_url = f"{search_url}{joiner}page={page_num}"
 
-            print(f"   • search page {page_num}/{max_pages}")
+            print(f"   * search page {page_num}/{max_pages}")
             await page.route("**/*", abort_media)
             await page.goto(search_url, timeout=60000)
             await page.wait_for_load_state("domcontentloaded", timeout=60000)
@@ -562,7 +562,7 @@ async def helium10_login_window(context):
         await page.goto(url, timeout=90_000, wait_until="domcontentloaded")
         print(
             "\n" + "=" * 62 + "\n"
-            "  HELIUM 10 — LOG IN HERE\n\n"
+            "  HELIUM 10 - LOG IN HERE\n\n"
             "  In the Chrome window that opened:\n"
             "    1. Click the puzzle icon (extensions) -> Helium 10 for Amazon Sellers.\n"
             "    2. Complete sign-in until it succeeds.\n"
@@ -575,10 +575,10 @@ async def helium10_login_window(context):
             "xpath=//*[contains(., '30-Day Revenue') or contains(., '30‑Day Revenue') or contains(., 'Product Summary')]"
         ).first
         max_sec = int(os.getenv("HELIUM_LOGIN_MAX_WAIT_SEC", "900"))
-        print(f" Waiting up to {max_sec}s for the Helium overlay on this page…\n")
+        print(f" Waiting up to {max_sec}s for the Helium overlay on this page...\n")
         try:
             await overlay.wait_for(state="visible", timeout=max_sec * 1000)
-            print(" Helium overlay detected — session will be saved when Chrome closes.\n")
+            print(" Helium overlay detected - session will be saved when Chrome closes.\n")
         except Exception:
             print(
                 f" Helium overlay did not appear within {max_sec}s. "
@@ -617,9 +617,9 @@ async def prime_helium10_on_pdp(context):
         except Exception:
             print(
                 "\n Helium 10 did not show its panel in 60s.\n"
-                "   • Click the extensions (puzzle) icon → Helium 10 → sign in if asked.\n"
-                "   • Reload this tab or rerun after login.\n"
-                "   • To skip this wait: SKIP_HELIUM_WARMUP=1\n",
+                "   * Click the extensions (puzzle) icon -> Helium 10 -> sign in if asked.\n"
+                "   * Reload this tab or rerun after login.\n"
+                "   * To skip this wait: SKIP_HELIUM_WARMUP=1\n",
                 file=sys.stderr,
             )
             return
@@ -637,7 +637,7 @@ async def prime_helium10_on_pdp(context):
         )
 
         max_sec = int(os.getenv("HELIUM_LOGIN_MAX_WAIT_SEC", "900"))
-        print(f" Waiting up to {max_sec}s for a revenue value to appear…\n")
+        print(f" Waiting up to {max_sec}s for a revenue value to appear...\n")
         for _ in range(max_sec):
             revenue = await extract_helium10_revenue(page)
             if revenue is not None:
@@ -723,7 +723,7 @@ async def run_scraper(keywords: list[str], min_price: str = None, max_price: str
 
         await context.close()
 
-    print(f"\n Done — output file: {OUTPUT_FILE}")
+    print(f"\n Done - output file: {OUTPUT_FILE}")
     return OUTPUT_FILE
 
 

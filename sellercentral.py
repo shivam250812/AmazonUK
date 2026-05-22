@@ -55,7 +55,7 @@ async def ensure_logged_in(page):
             if "signin" not in current_url and "ap/signin" not in current_url:
                 break
         else:
-            print(" Login timeout — Seller Central still on sign-in page.", file=sys.stderr)
+            print(" Login timeout - Seller Central still on sign-in page.", file=sys.stderr)
             sys.exit(1)
 
     print(" Seller Central login active\n")
@@ -226,7 +226,7 @@ async def check_asin(page, asin):
         except:
             pass
 
-        print(f"   → {status}")
+        print(f"   -> {status}")
 
         return {
             "asin": asin,

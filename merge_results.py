@@ -40,7 +40,7 @@ def merge_results(
                         "message": row.get("MESSAGE", ""),
                     }
     except FileNotFoundError:
-        print(f"  Gated output not found: {gated_csv} — merging without gating data")
+        print(f"  Gated output not found: {gated_csv} - merging without gating data")
 
     # ── Read scraper CSV and write merged output ──────────────────────────
     rows_written = 0
@@ -74,7 +74,7 @@ def merge_results(
         print(f" Scraper output not found: {scraper_csv}", file=sys.stderr)
         return output_csv
 
-    print(f" Merged {rows_written} rows → {output_csv}")
+    print(f" Merged {rows_written} rows -> {output_csv}")
 
     # Show summary
     if gated_data:
