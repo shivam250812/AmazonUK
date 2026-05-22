@@ -20,7 +20,7 @@ DEFAULT_INPUT_CSV = "input.csv"
 DEFAULT_OUTPUT_CSV = "gated_output.csv"
 
 SELLER_CENTRAL_URL = (
-    "https://sellercentral.amazon.com/product-search/keywords"
+    "https://sellercentral.amazon.co.uk/product-search?ref_=myp_ps"
 )
 
 # =========================================================

@@ -119,6 +119,7 @@ def step_scrape_amazon(keywords: list[str], test_mode: bool, min_price: str = No
     """
     Run script.py with the given keywords.
     In test mode, sets SEARCH_PAGES=1.
+    Returns True on success, False on failure.
     """
     _banner(2, "Scrape Amazon Products")
 
@@ -152,15 +153,16 @@ def step_scrape_amazon(keywords: list[str], test_mode: bool, min_price: str = No
     )
 
     if result.returncode != 0:
-        print(" script.py failed.", file=sys.stderr)
-        sys.exit(1)
+        print(f"  script.py failed for this keyword. Skipping...", file=sys.stderr)
+        return False
 
     output_csv = _DIR / "output.csv"
     if not output_csv.exists() or output_csv.stat().st_size == 0:
-        print(" output.csv was not created or is empty.", file=sys.stderr)
-        sys.exit(1)
+        print("  output.csv was not created or is empty. Skipping...", file=sys.stderr)
+        return False
 
     print(f"\n   Scraper output: {output_csv}")
+    return True
 
 
 # ─── Step 3: Extract ASINs ────────────────────────────────────────────────────
@@ -289,6 +291,11 @@ def main():
         default=20,
         help="Number of pages to scrape per keyword (default: 20)",
     )
+    parser.add_argument(
+        "--fresh",
+        action="store_true",
+        help="Clear old CSV data before starting a new run",
+    )
     args = parser.parse_args()
 
     start = time.time()
@@ -327,20 +334,38 @@ def main():
             args.topic, args.marketplace, args.count, args.test
         )
 
-    # Step 2: Scrape Amazon
-    step_scrape_amazon(keywords, args.test, args.min_price, args.max_price, args.pages)
+    # Clear old data if --fresh flag is used
+    if args.fresh:
+        for csv_name in ["output.csv", "input.csv", "gated_output.csv", "final_report.csv"]:
+            csv_path = _DIR / csv_name
+            if csv_path.exists():
+                csv_path.unlink()
+                print(f"   Deleted old {csv_name}")
+        print()
 
-    # Step 3: Extract ASINs
-    has_asins = step_extract_asins()
+    print(f"\n   Starting Keyword-by-Keyword Pipeline for {len(keywords)} keywords...")
+    for i, kw in enumerate(keywords, 1):
+        print(f"\n" + "═" * 50)
+        print(f"   Processing Keyword {i}/{len(keywords)}: '{kw}'")
+        print("═" * 50)
 
-    # Step 4: Seller Central (only if we have ASINs)
-    if has_asins and not args.skip_seller_central:
-        step_seller_central()
-    elif args.skip_seller_central:
-        print("\n    Skipping Seller Central (--skip-seller-central)")
+        # Step 2: Scrape Amazon
+        scrape_ok = step_scrape_amazon([kw], args.test, args.min_price, args.max_price, args.pages)
+        if not scrape_ok:
+            print(f"   Skipping remaining steps for '{kw}'...")
+            continue
 
-    # Step 5: Merge
-    step_merge()
+        # Step 3: Extract ASINs
+        has_asins = step_extract_asins()
+
+        # Step 4: Seller Central (only if we have ASINs)
+        if has_asins and not args.skip_seller_central:
+            step_seller_central()
+        elif args.skip_seller_central:
+            print("\n    Skipping Seller Central (--skip-seller-central)")
+
+        # Step 5: Merge
+        step_merge()
 
     elapsed = time.time() - start
     _done_banner()

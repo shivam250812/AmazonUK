@@ -38,7 +38,7 @@ from chrome_profile import (
 # ─── Config ────────────────────────────────────────────────────────────────────
 
 DEFAULT_KEYWORDS = ["copper water dispenser", "standing desk"]
-BASE_URL = "https://www.amazon.com/s?k="
+BASE_URL = "https://www.amazon.co.uk/s?k="
 _OUTPUT_DIR = Path(__file__).resolve().parent
 OUTPUT_FILE = str(_OUTPUT_DIR / "output.csv")
 
@@ -526,7 +526,7 @@ async def process_keyword(context, keyword, writer, out_fp, min_price=None, max_
                 return
 
             print(
-                f" ASIN: {product['asin']} | ${product['price']} "
+                f" ASIN: {product['asin']} | £{product['price']} "
                 f"| Shipper: {product['shipper']} | Seller: {product['seller']}"
             )
 
@@ -556,7 +556,7 @@ async def helium10_login_window(context):
     """
     Open a real PDP and wait so you can log in to Helium 10 (extensions menu).
     """
-    url = os.getenv("HELIUM_WARMUP_DP", "https://www.amazon.com/dp/B08LVBV9KX")
+    url = os.getenv("HELIUM_WARMUP_DP", "https://www.amazon.co.uk/dp/B08LVBV9KX")
     page = await context.new_page()
     try:
         await page.goto(url, timeout=90_000, wait_until="domcontentloaded")
@@ -603,7 +603,7 @@ async def prime_helium10_on_pdp(context):
     if os.getenv("SKIP_HELIUM_WARMUP", "0") == "1":
         return
 
-    url = os.getenv("HELIUM_WARMUP_DP", "https://www.amazon.com/dp/B08LVBV9KX")
+    url = os.getenv("HELIUM_WARMUP_DP", "https://www.amazon.co.uk/dp/B08LVBV9KX")
     page = await context.new_page()
     try:
         print(f"\n Loading a product page so Helium 10 can run: {url}")
@@ -695,13 +695,18 @@ async def run_scraper(keywords: list[str], min_price: str = None, max_price: str
         else:
             print("  Skipping automatic Helium warm-up.\n")
 
-        with open(OUTPUT_FILE, "w", newline="\n", encoding="utf-8") as f:
+        file_exists = Path(OUTPUT_FILE).exists()
+        mode = "a" if file_exists else "w"
+
+        with open(OUTPUT_FILE, mode, newline="\n", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow([
-                "Keyword", "ASIN", "Price", "Revenue", "Rating",
-                "Reviews", "Sellers", "Shipper", "Seller", "URL",
-            ])
-            f.flush()
+            if not file_exists:
+                writer.writerow([
+                    "Keyword", "ASIN", "Price", "Revenue", "Rating",
+                    "Reviews", "Sellers", "Shipper", "Seller", "URL",
+                ])
+                f.flush()
+
             print(f"\n Writing rows to: {OUTPUT_FILE}\n")
 
             for kw in keywords:
@@ -772,7 +777,7 @@ async def main():
     keywords = _get_keywords(args)
     print(f" Keywords: {keywords}\n")
     if args.min_price or args.max_price:
-        print(f" Price Filter: ${args.min_price or '0'} - ${args.max_price or 'Any'}\n")
+        print(f" Price Filter: £{args.min_price or '0'} - £{args.max_price or 'Any'}\n")
     await run_scraper(keywords, args.min_price, args.max_price)
 
 
