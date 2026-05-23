@@ -50,8 +50,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--marketplace",
-        default="amazon.in",
-        help="Target marketplace hint for the model (default: amazon.in).",
+        type=str,
+        default="amazon.co.uk",
+        help="Target marketplace hint for the model (default: amazon.co.uk).",
     )
     parser.add_argument(
         "--extra",

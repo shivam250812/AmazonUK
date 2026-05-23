@@ -7,6 +7,11 @@ import os
 import sys
 from pathlib import Path
 
+try:
+    import notifier
+except ImportError:
+    notifier = None
+
 from playwright.async_api import async_playwright
 
 # Shared Chrome profile setup
@@ -42,20 +47,28 @@ async def ensure_logged_in(page):
     if (
         "signin" in current_url
         or "ap/signin" in current_url
+        or "ap/mfa" in current_url
     ):
         print(
-            "\n  Seller Central not logged in.\n"
+            "\n  Seller Central not logged in or requiring MFA.\n"
             "   Please log in manually in the Chrome window.\n"
             "   Waiting up to 5 minutes for login...\n"
         )
+        
+        if notifier and notifier.is_configured():
+            notifier.send_email(
+                subject="ACTION REQUIRED: Seller Central MFA/Login",
+                body="The Amazon Pipeline is paused because Seller Central requires login or an MFA code.\n\nPlease open the Chrome browser window that the script opened and complete the login/MFA process. The script will automatically resume once logged in (it will wait up to 5 minutes)."
+            )
+
         # Wait up to 5 minutes, checking every 10 seconds
         for i in range(30):
             await asyncio.sleep(10)
             current_url = page.url.lower()
-            if "signin" not in current_url and "ap/signin" not in current_url:
+            if "signin" not in current_url and "ap/signin" not in current_url and "ap/mfa" not in current_url:
                 break
         else:
-            print(" Login timeout - Seller Central still on sign-in page.", file=sys.stderr)
+            print(" Login timeout - Seller Central still on sign-in/MFA page.", file=sys.stderr)
             sys.exit(1)
 
     print(" Seller Central login active\n")
@@ -174,7 +187,7 @@ async def check_asin(page, asin):
 
         # GATED
         if (
-            "you need approval to list in this brand" in combined
+            "you need approval" in combined
             or "apply to sell" in combined
             or "request approval" in combined
         ):
@@ -184,7 +197,8 @@ async def check_asin(page, asin):
 
         # RESTRICTED
         elif (
-            "listing limitations apply" in combined
+            "listing limitation" in combined
+            or "limitations apply" in combined
         ):
 
             status = "RESTRICTED"
@@ -280,19 +294,45 @@ async def run_seller_central(
         print(f" No ASINs found in {input_csv}")
         return output_csv
 
-    # RESUME LOGIC: Check existing output_csv
-    processed_asins = set()
-    file_exists = os.path.exists(output_csv)
+    # Check/write header first
+    header = ["ASIN", "TITLE", "STATUS", "MESSAGE"]
+    file_exists = os.path.exists(output_csv) and os.path.getsize(output_csv) > 0
+    has_header = False
     if file_exists:
         try:
-            with open(output_csv, "r", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    asin = row.get("ASIN", "").strip()
-                    if asin:
-                        processed_asins.add(asin)
+            with open(output_csv, "r", encoding="utf-8") as f_check:
+                first_line = f_check.readline()
+                if "ASIN" in first_line and "STATUS" in first_line:
+                    has_header = True
         except Exception:
-            file_exists = False
+            pass
+
+    if not file_exists:
+        with open(output_csv, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(header)
+    elif not has_header:
+        try:
+            with open(output_csv, "r", encoding="utf-8") as f:
+                content = f.read()
+            with open(output_csv, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(header)
+                f.write(content)
+        except Exception as e:
+            print(f"Error prepending header to {output_csv}: {e}")
+
+    # RESUME LOGIC: Check existing output_csv
+    processed_asins = set()
+    try:
+        with open(output_csv, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                asin = row.get("ASIN", "").strip()
+                if asin:
+                    processed_asins.add(asin)
+    except Exception:
+        pass
 
     asins_to_process = [a for a in asins if a not in processed_asins]
 
@@ -311,23 +351,14 @@ async def run_seller_central(
 
         await ensure_logged_in(page)
 
-        mode = "a" if file_exists else "w"
         with open(
             output_csv,
-            mode,
+            "a",
             newline="",
             encoding="utf-8"
         ) as f:
 
             writer = csv.writer(f)
-
-            if not file_exists:
-                writer.writerow([
-                    "ASIN",
-                    "TITLE",
-                    "STATUS",
-                    "MESSAGE",
-                ])
 
             for asin in asins_to_process:
 

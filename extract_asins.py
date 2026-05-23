@@ -22,6 +22,25 @@ def extract_asins(input_path: str = "output.csv", output_path: str = "input.csv"
     asins_seen = set()
     asins_ordered = []
 
+    # Ensure input_path has header if it is not empty
+    try:
+        from pathlib import Path
+        inp_path = Path(input_path)
+        if inp_path.exists() and inp_path.stat().st_size > 0:
+            has_hdr = False
+            with open(inp_path, "r", encoding="utf-8") as f_check:
+                first_line = f_check.readline()
+                if "Keyword" in first_line and "ASIN" in first_line:
+                    has_hdr = True
+            if not has_hdr:
+                with open(inp_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                header_line = "Keyword,ASIN,Price,Revenue,Rating,Reviews,Sellers,Shipper,Seller,URL\n"
+                with open(inp_path, "w", newline="", encoding="utf-8") as f:
+                    f.write(header_line + content)
+    except Exception as e:
+        print(f"Error checking/prepending header to input file {input_path}: {e}", file=sys.stderr)
+
     try:
         with open(input_path, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f)

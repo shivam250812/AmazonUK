@@ -30,11 +30,16 @@ pip install -r requirements.txt
 playwright install chromium
 ```
 
-### 2. Add API Keys
-Create a `.env` file in the root of the project and add your OpenAI key:
+### 2. Add API Keys & Email Setup
+Create a `.env` file in the root of the project and add your OpenAI key and email credentials (for notifications):
 ```bash
 OPENAI_API_KEY=sk-...
+
+# Email Notifications (Optional but recommended)
+SMTP_EMAIL=your.email@gmail.com
+SMTP_PASSWORD=your_app_password
 ```
+> **Note:** If using Gmail, you must generate an "App Password" from your Google Account settings -> Security -> 2-Step Verification. Do NOT use your regular email password.
 
 ### 3. Initialize Browser Profile (One-Time Setup)
 
@@ -48,7 +53,7 @@ python run_pipeline.py --setup
 This will launch a blank Chrome window. You have ~5 minutes to:
 1. Navigate to the **Chrome Web Store** and install the **Helium 10** extension.
 2. Click the Helium 10 puzzle icon and **Log in**.
-3. Go to **sellercentral.amazon.com** and **Log in**.
+3. Go to **sellercentral.amazon.co.uk** and **Log in**.
 4. Allow the browser to close automatically when the timer expires. Your session is now saved in the `chrome-data/` folder.
 
 > **Note:** Do NOT delete the `chrome-data/` folder, or you will have to repeat this setup process.

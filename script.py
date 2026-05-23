@@ -25,6 +25,11 @@ import sys
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
+try:
+    import notifier
+except ImportError:
+    notifier = None
+
 from playwright.async_api import async_playwright
 
 # Shared Chrome profile setup
@@ -516,6 +521,12 @@ async def process_keyword(context, keyword, writer, out_fp, min_price=None, max_
 
     urls = list(urls_set)
 
+    # Limit products if MAX_PRODUCTS is set (useful for fast testing)
+    max_prods = int(os.getenv("MAX_PRODUCTS", "0"))
+    if max_prods > 0:
+        urls = urls[:max_prods]
+        print(f"   [TEST MODE] Limiting to {max_prods} products per keyword.")
+
     semaphore = asyncio.Semaphore(4)
     write_lock = asyncio.Lock()
 
@@ -601,7 +612,7 @@ async def prime_helium10_on_pdp(context):
     revenue widget appears or time out.
     """
     if os.getenv("SKIP_HELIUM_WARMUP", "0") == "1":
-        return
+        return True
 
     url = os.getenv("HELIUM_WARMUP_DP", "https://www.amazon.co.uk/dp/B08LVBV9KX")
     page = await context.new_page()
@@ -622,30 +633,40 @@ async def prime_helium10_on_pdp(context):
                 "   * To skip this wait: SKIP_HELIUM_WARMUP=1\n",
                 file=sys.stderr,
             )
-            return
+            return False
 
         revenue = await extract_helium10_revenue(page)
-        if revenue is not None:
+        if revenue is not None and revenue != "NA":
             print(" Helium 10 is active and returning revenue values.\n")
-            return
+            return True
 
         print(
-            "\n Helium 10 panel is visible but revenue was not found.\n"
+            "\n Helium 10 panel is visible but a valid revenue number was not found.\n"
             "   This usually means Helium 10 is asking you to sign in.\n"
             "   Please sign in once in the Chrome window, then wait.\n",
             file=sys.stderr,
         )
 
+        if notifier and notifier.is_configured():
+            notifier.send_email(
+                subject="ACTION REQUIRED: Helium 10 Login",
+                body="The Amazon scraper is paused because Helium 10 is asking for a login.\n\nPlease open the Chrome browser window that the script opened, click the Helium 10 extension icon, and log in. The script will automatically resume once it detects revenue data (it will wait up to 15 minutes)."
+            )
+
         max_sec = int(os.getenv("HELIUM_LOGIN_MAX_WAIT_SEC", "900"))
         print(f" Waiting up to {max_sec}s for a revenue value to appear...\n")
         for _ in range(max_sec):
             revenue = await extract_helium10_revenue(page)
-            if revenue is not None:
+            if revenue is not None and revenue != "NA":
                 print(" Helium 10 revenue detected after login.\n")
-                return
+                return True
             await page.wait_for_timeout(1000)
+            
+        print("\n Helium 10 revenue never appeared. Aborting.", file=sys.stderr)
+        return False
     except Exception as e:
         print(f" Helium warm-up navigation failed: {e}", file=sys.stderr)
+        return False
     finally:
         try:
             await page.close()
@@ -691,22 +712,46 @@ async def run_scraper(keywords: list[str], min_price: str = None, max_price: str
                 return OUTPUT_FILE
 
         if not skip_prime:
-            await prime_helium10_on_pdp(context)
+            prime_ok = await prime_helium10_on_pdp(context)
+            if prime_ok is False:
+                print("Helium 10 warmup failed. Exiting so pipeline can alert.", file=sys.stderr)
+                await context.close()
+                sys.exit(2)
         else:
             print("  Skipping automatic Helium warm-up.\n")
 
-        file_exists = Path(OUTPUT_FILE).exists()
-        mode = "a" if file_exists else "w"
+        header = [
+            "Keyword", "ASIN", "Price", "Revenue", "Rating",
+            "Reviews", "Sellers", "Shipper", "Seller", "URL",
+        ]
+        file_exists = Path(OUTPUT_FILE).exists() and Path(OUTPUT_FILE).stat().st_size > 0
+        has_header = False
+        if file_exists:
+            try:
+                with open(OUTPUT_FILE, "r", encoding="utf-8") as f_check:
+                    first_line = f_check.readline()
+                    if "Keyword" in first_line and "ASIN" in first_line:
+                        has_header = True
+            except Exception:
+                pass
 
-        with open(OUTPUT_FILE, mode, newline="\n", encoding="utf-8") as f:
+        if not file_exists:
+            with open(OUTPUT_FILE, "w", newline="\n", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(header)
+        elif not has_header:
+            try:
+                with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
+                    content = f.read()
+                with open(OUTPUT_FILE, "w", newline="\n", encoding="utf-8") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(header)
+                    f.write(content)
+            except Exception as e:
+                print(f"Error prepending header to {OUTPUT_FILE}: {e}")
+
+        with open(OUTPUT_FILE, "a", newline="\n", encoding="utf-8") as f:
             writer = csv.writer(f)
-            if not file_exists:
-                writer.writerow([
-                    "Keyword", "ASIN", "Price", "Revenue", "Rating",
-                    "Reviews", "Sellers", "Shipper", "Seller", "URL",
-                ])
-                f.flush()
-
             print(f"\n Writing rows to: {OUTPUT_FILE}\n")
 
             for kw in keywords:

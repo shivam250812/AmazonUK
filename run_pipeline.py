@@ -32,6 +32,10 @@ import sys
 import time
 from pathlib import Path
 
+try:
+    import notifier
+except ImportError:
+    notifier = None
 
 # All scripts live next to this file
 _DIR = Path(__file__).resolve().parent
@@ -86,6 +90,8 @@ def step_suggest_keywords(
 
     if result.returncode != 0:
         print(f" suggest_amazon_categories.py failed:\n{result.stderr}", file=sys.stderr)
+        if notifier:
+            notifier.send_email("CRITICAL ERROR: Keyword Generation Failed", f"The suggest_amazon_categories.py script failed with error:\n\n{result.stderr}")
         sys.exit(1)
 
     # Parse the JSON output
@@ -93,6 +99,8 @@ def step_suggest_keywords(
         data = json.loads(result.stdout)
     except json.JSONDecodeError:
         print(f" Could not parse suggestions output:\n{result.stdout}", file=sys.stderr)
+        if notifier:
+            notifier.send_email("CRITICAL ERROR: Keyword Parsing Failed", f"Could not parse JSON output:\n\n{result.stdout}")
         sys.exit(1)
 
     suggestions = data.get("suggestions", [])
@@ -154,15 +162,15 @@ def step_scrape_amazon(keywords: list[str], test_mode: bool, min_price: str = No
 
     if result.returncode != 0:
         print(f"  script.py failed for this keyword. Skipping...", file=sys.stderr)
-        return False
+        return result.returncode
 
     output_csv = _DIR / "output.csv"
     if not output_csv.exists() or output_csv.stat().st_size == 0:
         print("  output.csv was not created or is empty. Skipping...", file=sys.stderr)
-        return False
+        return 1
 
     print(f"\n   Scraper output: {output_csv}")
-    return True
+    return 0
 
 
 # ─── Step 3: Extract ASINs ────────────────────────────────────────────────────
@@ -182,9 +190,9 @@ def step_extract_asins():
 
     if not asins:
         print("  No ASINs extracted - skipping Seller Central step.")
-        return False
+        return []
 
-    return True
+    return asins
 
 
 # ─── Step 4: Seller Central ───────────────────────────────────────────────────
@@ -210,6 +218,9 @@ def step_seller_central():
 
     if result.returncode != 0:
         print("  sellercentral.py returned non-zero. Continuing with merge...", file=sys.stderr)
+        return False
+        
+    return True
 
 
 # ─── Step 5: Merge Results ────────────────────────────────────────────────────
@@ -248,8 +259,8 @@ def main():
     )
     parser.add_argument(
         "--marketplace",
-        default="amazon.in",
-        help="Target marketplace (default: amazon.in)",
+        default="amazon.co.uk",
+        help="Target marketplace (default: amazon.co.uk)",
     )
     parser.add_argument(
         "--count",
@@ -343,6 +354,13 @@ def main():
                 print(f"   Deleted old {csv_name}")
         print()
 
+    if notifier and notifier.is_configured():
+        kw_list_str = "\n".join([f"  - {k}" for k in keywords])
+        notifier.send_email(
+            subject="Amazon Pipeline Started",
+            body=f"Pipeline started for topic: '{args.topic}'\nTest Mode: {args.test}\n\nKeywords to process ({len(keywords)}):\n{kw_list_str}"
+        )
+
     print(f"\n   Starting Keyword-by-Keyword Pipeline for {len(keywords)} keywords...")
     for i, kw in enumerate(keywords, 1):
         print(f"\n" + "=" * 50)
@@ -350,22 +368,53 @@ def main():
         print("=" * 50)
 
         # Step 2: Scrape Amazon
-        scrape_ok = step_scrape_amazon([kw], args.test, args.min_price, args.max_price, args.pages)
-        if not scrape_ok:
+        scrape_code = step_scrape_amazon([kw], args.test, args.min_price, args.max_price, args.pages)
+        if scrape_code != 0:
+            if scrape_code == 2:
+                print(f"   CRITICAL: Helium 10 failed for '{kw}'. Aborting pipeline.")
+                if notifier:
+                    notifier.send_email(
+                        subject=f"CRITICAL ERROR: Helium 10 Failed",
+                        body=f"Helium 10 failed to load or authenticate during keyword: '{kw}'. The entire pipeline has been aborted."
+                    )
+                break
+                
             print(f"   Skipping remaining steps for '{kw}'...")
+            if notifier:
+                notifier.send_email(
+                    subject=f"Keyword Failed: {kw}",
+                    body=f"The scraping step failed or returned no results for keyword: '{kw}'."
+                )
             continue
 
         # Step 3: Extract ASINs
-        has_asins = step_extract_asins()
+        extracted_asins = step_extract_asins()
+        has_asins = bool(extracted_asins)
 
         # Step 4: Seller Central (only if we have ASINs)
+        seller_central_ok = True
         if has_asins and not args.skip_seller_central:
-            step_seller_central()
+            seller_central_ok = step_seller_central()
+            if not seller_central_ok:
+                if notifier:
+                    notifier.send_email(
+                        subject=f"CRITICAL ERROR: Seller Central Failed for '{kw}'",
+                        body=f"Seller central check failed for keyword '{kw}'. This is likely due to a login or MFA timeout. Please check the Chrome window or logs."
+                    )
         elif args.skip_seller_central:
             print("\n    Skipping Seller Central (--skip-seller-central)")
 
         # Step 5: Merge
         step_merge()
+        
+        if notifier:
+            status_text = "Success" if seller_central_ok else "Finished with Seller Central Errors"
+            notifier.send_email(
+                subject=f"Keyword Completed: {kw}",
+                body=f"Finished processing keyword: '{kw}'\nStatus: {status_text}\nASINs Extracted: {len(extracted_asins)}\n\nCheck the final_report.csv for details."
+            )
+            
+        print(f"\n   [✔] Process done for keyword: '{kw}'")
 
     elapsed = time.time() - start
     _done_banner()
@@ -376,6 +425,13 @@ def main():
     print(f"     * gated_output.csv    - Seller Central gating")
     print(f"     * final_report.csv    - Merged final report")
     print()
+    
+    if notifier:
+        notifier.send_email(
+            subject="Amazon Pipeline Finished",
+            body=f"The entire pipeline has finished processing {len(keywords)} keywords in {elapsed/60:.1f} minutes.",
+            attachment_path=str(_DIR / "final_report.csv")
+        )
 
 
 if __name__ == "__main__":

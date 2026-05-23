@@ -22,6 +22,28 @@ def merge_results(
     Merge scraper results with gating data by ASIN.
     Returns path to the final merged CSV.
     """
+    # Ensure scraper_csv and gated_csv have headers if they exist and are not empty
+    for csv_path, header, keys in [
+        (scraper_csv, ["Keyword", "ASIN", "Price", "Revenue", "Rating", "Reviews", "Sellers", "Shipper", "Seller", "URL"], ["Keyword", "ASIN"]),
+        (gated_csv, ["ASIN", "TITLE", "STATUS", "MESSAGE"], ["ASIN", "STATUS"])
+    ]:
+        try:
+            from pathlib import Path
+            p = Path(csv_path)
+            if p.exists() and p.stat().st_size > 0:
+                has_hdr = False
+                with open(p, "r", encoding="utf-8") as f_check:
+                    first_line = f_check.readline()
+                    if all(k in first_line for k in keys):
+                        has_hdr = True
+                if not has_hdr:
+                    with open(p, "r", encoding="utf-8") as f:
+                        content = f.read()
+                    with open(p, "w", newline="", encoding="utf-8") as f:
+                        f.write(",".join(header) + "\n" + content)
+        except Exception as e:
+            print(f"Error checking header for {csv_path}: {e}")
+
     # ── Load gating data into a dict keyed by ASIN ────────────────────────
     gated_data = {}
     try:
@@ -36,8 +58,9 @@ def merge_results(
                 ).strip()
                 if asin:
                     gated_data[asin] = {
-                        "status": row.get("STATUS", ""),
-                        "message": row.get("MESSAGE", ""),
+                        "title": row.get("TITLE") or row.get("title") or "",
+                        "status": row.get("STATUS") or row.get("status") or "",
+                        "message": row.get("MESSAGE") or row.get("message") or "",
                     }
     except FileNotFoundError:
         print(f"  Gated output not found: {gated_csv} - merging without gating data")
