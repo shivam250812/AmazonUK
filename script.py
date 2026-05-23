@@ -575,7 +575,7 @@ async def helium10_login_window(context):
     """
     Open a real PDP and wait so you can log in to Helium 10 (extensions menu).
     """
-    url = os.getenv("HELIUM_WARMUP_DP", "https://www.amazon.co.uk/dp/B08LVBV9KX")
+    url = os.getenv("HELIUM_WARMUP_DP", "https://www.amazon.co.uk/dp/B0CKLSFSQZ")
     page = await context.new_page()
     try:
         await page.goto(url, timeout=90_000, wait_until="domcontentloaded")
@@ -622,7 +622,7 @@ async def prime_helium10_on_pdp(context):
     if os.getenv("SKIP_HELIUM_WARMUP", "0") == "1":
         return True
 
-    url = os.getenv("HELIUM_WARMUP_DP", "https://www.amazon.co.uk/dp/B08LVBV9KX")
+    url = os.getenv("HELIUM_WARMUP_DP", "https://www.amazon.co.uk/dp/B0CKLSFSQZ")
     page = await context.new_page()
     try:
         print(f"\n Loading a product page so Helium 10 can run: {url}")

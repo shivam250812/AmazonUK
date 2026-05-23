@@ -21,7 +21,14 @@ cd <repo-name>
 
 # Create a virtual environment
 python3 -m venv .venv
+# On Windows use: python -m venv .venv
+
+# Activate the virtual environment
+# Mac/Linux:
 source .venv/bin/activate
+# Windows:
+# .\venv\Scripts\activate
+# (If Windows gives a "running scripts is disabled" error, run this command first: Set-ExecutionPolicy Unrestricted -Scope CurrentUser)
 
 # Install dependencies
 pip install -r requirements.txt
