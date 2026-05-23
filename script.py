@@ -85,7 +85,7 @@ async def abort_media(route):
 
 # ─── Helium 10 Revenue Extraction ─────────────────────────────────────────────
 
-async def extract_helium10_revenue(page):
+async def extract_helium10_revenue(page, quiet_fast_check=False):
     """
     Scrape the '30-Day Revenue' value injected by the Helium 10 extension.
 
@@ -117,14 +117,17 @@ async def extract_helium10_revenue(page):
         ).first
 
         try:
-            await panel_locator.wait_for(state="visible", timeout=15_000)
+            timeout_ms = 2000 if quiet_fast_check else 15_000
+            await panel_locator.wait_for(state="visible", timeout=timeout_ms)
         except Exception:
-            print("        Helium panel not detected - skipping revenue for this product.")
+            if not quiet_fast_check:
+                print("        Helium panel not detected - skipping revenue for this product.")
             return "NA"
 
         saw_na_at = None  # Track which attempt we first saw N/A
 
-        for attempt in range(50):  # 50 × 500 ms = 25 s max polling
+        max_attempts = 2 if quiet_fast_check else 50
+        for attempt in range(max_attempts):  # 50 × 500 ms = 25 s max polling
             try:
                 container = panel_locator.locator(
                     "xpath=ancestor-or-self::*[contains(@class,'summary') "
@@ -148,6 +151,9 @@ async def extract_helium10_revenue(page):
 
             # Check if we see N/A or dash
             if NA_RE.search(txt):
+                if quiet_fast_check:
+                    return "NA"
+                
                 if saw_na_at is None:
                     saw_na_at = attempt
                     print("        Helium showing N/A - waiting 10s to see if it updates...")
@@ -169,10 +175,12 @@ async def extract_helium10_revenue(page):
         except Exception:
             pass
 
-        print("        Helium panel visible but revenue value not found.")
+        if not quiet_fast_check:
+            print("        Helium panel visible but revenue value not found.")
 
     except Exception as e:
-        print(f"        extract_helium10_revenue error: {e}")
+        if not quiet_fast_check:
+            print(f"        extract_helium10_revenue error: {e}")
 
     return "NA"
 
@@ -656,7 +664,7 @@ async def prime_helium10_on_pdp(context):
         max_sec = int(os.getenv("HELIUM_LOGIN_MAX_WAIT_SEC", "900"))
         print(f" Waiting up to {max_sec}s for a revenue value to appear...\n")
         for _ in range(max_sec):
-            revenue = await extract_helium10_revenue(page)
+            revenue = await extract_helium10_revenue(page, quiet_fast_check=True)
             if revenue is not None and revenue != "NA":
                 print(" Helium 10 revenue detected after login.\n")
                 return True
