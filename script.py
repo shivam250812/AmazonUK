@@ -575,7 +575,7 @@ async def helium10_login_window(context):
     """
     Open a real PDP and wait so you can log in to Helium 10 (extensions menu).
     """
-    url = os.getenv("HELIUM_WARMUP_DP", "https://www.amazon.co.uk/dp/B0CKLSFSQZ")
+    url = os.getenv("HELIUM_WARMUP_DP", "https://www.amazon.co.uk/dp/B0H2G1PDV2")
     page = await context.new_page()
     try:
         await page.goto(url, timeout=90_000, wait_until="domcontentloaded")
@@ -622,7 +622,7 @@ async def prime_helium10_on_pdp(context):
     if os.getenv("SKIP_HELIUM_WARMUP", "0") == "1":
         return True
 
-    url = os.getenv("HELIUM_WARMUP_DP", "https://www.amazon.co.uk/dp/B0CKLSFSQZ")
+    url = os.getenv("HELIUM_WARMUP_DP", "https://www.amazon.co.uk/dp/B0H2G1PDV2")
     page = await context.new_page()
     try:
         print(f"\n Loading a product page so Helium 10 can run: {url}")
@@ -648,6 +648,15 @@ async def prime_helium10_on_pdp(context):
             print(" Helium 10 is active and returning revenue values.\n")
             return True
 
+        # Check if we are actually logged in, but the product just has N/A revenue
+        try:
+            body_txt = await page.locator("body").inner_text()
+            if "Track Competitor" in body_txt or "Save Product Idea" in body_txt or "Listing Health Score" in body_txt:
+                print(" Helium 10 is active (Product genuinely has N/A revenue).\n")
+                return True
+        except:
+            pass
+
         print(
             "\n Helium 10 panel is visible but a valid revenue number was not found.\n"
             "   This usually means Helium 10 is asking you to sign in.\n"
@@ -668,6 +677,13 @@ async def prime_helium10_on_pdp(context):
             if revenue is not None and revenue != "NA":
                 print(" Helium 10 revenue detected after login.\n")
                 return True
+            try:
+                body_txt = await page.locator("body").inner_text()
+                if "Track Competitor" in body_txt or "Save Product Idea" in body_txt or "Listing Health Score" in body_txt:
+                    print(" Helium 10 panel fully loaded after login.\n")
+                    return True
+            except:
+                pass
             await page.wait_for_timeout(1000)
             
         print("\n Helium 10 revenue never appeared. Aborting.", file=sys.stderr)
