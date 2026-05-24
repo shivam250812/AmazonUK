@@ -563,6 +563,8 @@ async def process_keyword(context, keyword, writer, out_fp, min_price=None, max_
                     product["url"],
                 ])
                 out_fp.flush()
+                os.fsync(out_fp.fileno())
+                print(f"        [✓] Saved {product['asin']} to output.csv")
 
     tasks = [bound_scrape(url) for url in urls]
     if tasks:
