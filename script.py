@@ -77,10 +77,13 @@ def extract_asin(url):
     return match.group(1) if match else "N/A"
 
 async def abort_media(route):
-    if route.request.resource_type in ("image", "media", "font"):
-        await route.abort()
-    else:
-        await route.continue_()
+    try:
+        if route.request.resource_type in ("image", "media", "font"):
+            await route.abort()
+        else:
+            await route.continue_()
+    except Exception:
+        pass
 
 
 # ─── Helium 10 Revenue Extraction ─────────────────────────────────────────────
@@ -417,8 +420,11 @@ async def scrape_product(context, url):
             await page.wait_for_selector("#buybox, #merchant-info, .tabular-buybox-text", state="attached", timeout=5000)
         except Exception:
             pass
-    except:
-        await page.close()
+    except Exception:
+        try:
+            await page.close()
+        except Exception:
+            pass
         return None
 
     price = None
@@ -442,7 +448,10 @@ async def scrape_product(context, url):
 
     asin = extract_asin(url)
 
-    await page.close()
+    try:
+        await page.close()
+    except Exception:
+        pass
 
     return {
         "asin": asin,
@@ -487,13 +496,17 @@ async def process_keyword(context, keyword, writer, out_fp, min_price=None, max_
                 search_url = f"{search_url}{joiner}page={page_num}"
 
             print(f"   * search page {page_num}/{max_pages}")
-            await page.route("**/*", abort_media)
-            await page.goto(search_url, timeout=60000)
-            await page.wait_for_load_state("domcontentloaded", timeout=60000)
             try:
-                await page.wait_for_selector("a.a-link-normal.s-no-outline", state="attached", timeout=5000)
-            except Exception:
-                pass
+                await page.route("**/*", abort_media)
+                await page.goto(search_url, timeout=60000)
+                await page.wait_for_load_state("domcontentloaded", timeout=60000)
+                try:
+                    await page.wait_for_selector("a.a-link-normal.s-no-outline", state="attached", timeout=5000)
+                except Exception:
+                    pass
+            except Exception as e:
+                print(f"        Error loading search page {page_num}: {e}")
+                break
 
             try:
                 body_txt = (await page.locator("body").inner_text()) or ""
@@ -564,7 +577,7 @@ async def process_keyword(context, keyword, writer, out_fp, min_price=None, max_
                 ])
                 out_fp.flush()
                 os.fsync(out_fp.fileno())
-                print(f"        [✓] Saved {product['asin']} to output.csv")
+                print(f"        [OK] Saved {product['asin']} to output.csv")
 
     tasks = [bound_scrape(url) for url in urls]
     if tasks:
