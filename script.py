@@ -760,21 +760,21 @@ async def run_scraper(keywords: list[str], min_price: str = None, max_price: str
                 pass
 
         if not file_exists:
-            with open(OUTPUT_FILE, "w", newline="\n", encoding="utf-8") as f:
+            with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 writer.writerow(header)
         elif not has_header:
             try:
                 with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
                     content = f.read()
-                with open(OUTPUT_FILE, "w", newline="\n", encoding="utf-8") as f:
+                with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
                     writer = csv.writer(f)
                     writer.writerow(header)
                     f.write(content)
             except Exception as e:
                 print(f"Error prepending header to {OUTPUT_FILE}: {e}")
 
-        with open(OUTPUT_FILE, "a", newline="\n", encoding="utf-8") as f:
+        with open(OUTPUT_FILE, "a", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             print(f"\n Writing rows to: {OUTPUT_FILE}\n")
 
