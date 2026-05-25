@@ -52,6 +52,7 @@ SETUP_ONLY = os.getenv("SETUP_ONLY", "0") == "1"
 AUTO_CLEAN_HELIUM10 = os.getenv("AUTO_CLEAN_HELIUM10", "0") == "1"
 HELIUM_LOGIN_FIRST = os.getenv("HELIUM_LOGIN_FIRST", "0") == "1"
 HELIUM_LOGIN_ONLY = os.getenv("HELIUM_LOGIN_ONLY", "0") == "1"
+DELIVERY_POSTCODE = os.getenv("DELIVERY_POSTCODE", "M60 1NX")
 
 
 # ─── Utility Functions ────────────────────────────────────────────────────────
@@ -438,13 +439,28 @@ async def scrape_product(context, url):
     try:
         price_text = await page.locator(".a-price .a-offscreen").first.inner_text()
         price = clean_price(price_text)
-    except:
+    except Exception:
         pass
 
-    rating, reviews = await extract_rating_and_reviews(page)
-    sellers = await extract_seller_count(page)
-    shipper, seller = await extract_shipper_and_seller(page)
-    revenue = await extract_helium10_revenue(page)
+    try:
+        rating, reviews = await extract_rating_and_reviews(page)
+    except Exception:
+        pass
+
+    try:
+        sellers = await extract_seller_count(page)
+    except Exception:
+        pass
+
+    try:
+        shipper, seller = await extract_shipper_and_seller(page)
+    except Exception:
+        pass
+
+    try:
+        revenue = await extract_helium10_revenue(page)
+    except Exception:
+        pass
 
     asin = extract_asin(url)
 
@@ -552,36 +568,39 @@ async def process_keyword(context, keyword, writer, out_fp, min_price=None, max_
     write_lock = asyncio.Lock()
 
     async def bound_scrape(url):
-        async with semaphore:
-            product = await scrape_product(context, url)
-            if not product:
-                return
+        try:
+            async with semaphore:
+                product = await scrape_product(context, url)
+                if not product:
+                    return
 
-            print(
-                f" ASIN: {product['asin']} | £{product['price']} "
-                f"| Shipper: {product['shipper']} | Seller: {product['seller']}"
-            )
+                print(
+                    f" ASIN: {product['asin']} | {product['price']} "
+                    f"| Shipper: {product['shipper']} | Seller: {product['seller']}"
+                )
 
-            async with write_lock:
-                writer.writerow([
-                    keyword,
-                    product["asin"],
-                    product["price"],
-                    product["revenue"],
-                    product["rating"],
-                    product["reviews"],
-                    product["sellers"],
-                    product["shipper"],
-                    product["seller"],
-                    product["url"],
-                ])
-                out_fp.flush()
-                os.fsync(out_fp.fileno())
-                print(f"        [OK] Saved {product['asin']} to output.csv")
+                async with write_lock:
+                    writer.writerow([
+                        keyword,
+                        product["asin"],
+                        product["price"],
+                        product["revenue"],
+                        product["rating"],
+                        product["reviews"],
+                        product["sellers"],
+                        product["shipper"],
+                        product["seller"],
+                        product["url"],
+                    ])
+                    out_fp.flush()
+                    os.fsync(out_fp.fileno())
+                    print(f"        [OK] Saved {product['asin']} to output.csv")
+        except Exception as e:
+            print(f"        [WARN] Skipping one product ({url}): {e}")
 
     tasks = [bound_scrape(url) for url in urls]
     if tasks:
-        await asyncio.gather(*tasks)
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 # ─── Helium 10 Login & Warmup ─────────────────────────────────────────────────
@@ -713,6 +732,75 @@ async def prime_helium10_on_pdp(context):
             pass
 
 
+# ─── Amazon Delivery Postcode ──────────────────────────────────────────────────
+
+async def set_delivery_postcode(context, postcode: str):
+    """
+    Set the Amazon UK delivery postcode so product results and prices
+    are consistent. Clicks the 'Deliver to' widget and enters the postcode.
+    """
+    if not postcode:
+        return
+
+    print(f"\n Setting Amazon delivery postcode to: {postcode}")
+    page = await context.new_page()
+    try:
+        await page.goto(AMAZON_ORIGIN, timeout=30000, wait_until="domcontentloaded")
+        await page.wait_for_timeout(2000)
+
+        # Click on the "Deliver to" address widget
+        deliver_btn = page.locator("#glow-ingress-line1, #nav-global-location-popover-link, #nav-packard-glow-loc-icon")
+        try:
+            await deliver_btn.first.click(timeout=5000)
+        except Exception:
+            print("   Could not find 'Deliver to' button - postcode may already be set.")
+            await page.close()
+            return
+
+        await page.wait_for_timeout(1500)
+
+        # Look for the postcode input field in the popup
+        postcode_input = page.locator("#GLUXZipUpdateInput, input[name='glpiZipCode'], input[aria-label*='postcode' i], input[aria-label*='zip' i]")
+        try:
+            await postcode_input.first.wait_for(state="visible", timeout=5000)
+            await postcode_input.first.fill("")
+            await postcode_input.first.fill(postcode)
+            await page.wait_for_timeout(500)
+        except Exception:
+            print("   Could not find postcode input field.")
+            await page.close()
+            return
+
+        # Click Apply button
+        apply_btn = page.locator("#GLUXZipUpdate, input[aria-labelledby='GLUXZipUpdate-announce']")
+        try:
+            await apply_btn.first.click(timeout=3000)
+            await page.wait_for_timeout(2000)
+        except Exception:
+            print("   Could not find Apply button.")
+            await page.close()
+            return
+
+        # If there's a "Continue" or "Done" button after applying, click it
+        try:
+            done_btn = page.locator("button[name='glowDoneButton'], #a-popover-ok button, .a-popover-footer button")
+            if await done_btn.count() > 0:
+                await done_btn.first.click(timeout=3000)
+                await page.wait_for_timeout(1500)
+        except Exception:
+            pass
+
+        print(f"   Delivery postcode set to: {postcode}\n")
+
+    except Exception as e:
+        print(f"   Failed to set postcode: {e}")
+    finally:
+        try:
+            await page.close()
+        except Exception:
+            pass
+
+
 # ─── Public API (for run_pipeline.py) ──────────────────────────────────────────
 
 async def run_scraper(keywords: list[str], min_price: str = None, max_price: str = None) -> str:
@@ -759,6 +847,9 @@ async def run_scraper(keywords: list[str], min_price: str = None, max_price: str
         else:
             print("  Skipping automatic Helium warm-up.\n")
 
+        # Set Amazon delivery postcode
+        await set_delivery_postcode(context, DELIVERY_POSTCODE)
+
         header = [
             "Keyword", "ASIN", "Price", "Revenue", "Rating",
             "Reviews", "Sellers", "Shipper", "Seller", "URL",
@@ -797,15 +888,14 @@ async def run_scraper(keywords: list[str], min_price: str = None, max_price: str
                 try:
                     await process_keyword(context, kw, writer, f, min_price, max_price)
                 except Exception as e:
-                    if type(e).__name__ == "TargetClosedError":
-                        print(
-                            "\n Browser was closed before scraping finished.",
-                            file=sys.stderr,
-                        )
-                        break
-                    raise
+                    print(f"\n [ERROR] Keyword '{kw}' failed: {e}", file=sys.stderr)
+                    print(f"   Continuing to next keyword...\n")
+                    continue
 
-        await context.close()
+        try:
+            await context.close()
+        except Exception:
+            pass
 
     print(f"\n Done - output file: {OUTPUT_FILE}")
     return OUTPUT_FILE
